@@ -1,0 +1,53 @@
+groups:
+  - name: agent-api-alerts
+    rules:
+      - alert: AgentAPIDown
+        expr: up{job="agent-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Agent API is down"
+          description: "The agent API has been unreachable for more than 1 minute."
+
+      # TODO: How would you track rejection metrics for observability?
+      # Consider: What information would operators need when debugging rejection spikes?
+
+      # Justification: A static threshold is useful for sustained degradation. 
+      # We calculate the error ratio (rejections / total) over a 5-minute window[cite: 2].
+      # To prevent alert fatigue (noise), we add an 'and' condition ensuring there is 
+      # a meaningful volume of traffic (> 5 req/sec) before triggering the alert.
+      - alert: HighRejectionRate
+        expr: |
+          (
+            sum(rate(agent_api_rejections_total[5m])) 
+            / 
+            sum(rate(agent_api_requests_total[5m]))
+          ) > 0.15 
+          and sum(rate(agent_api_requests_total[5m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High API rejection rate (> 15%)"
+          description: "The agent API rejection rate is currently at {{ $value | humanizePercentage }} over the last 5 minutes. This indicates sustained abnormal operation."
+          action: "Review agent-api application logs for widespread validation failures, authentication drops, or dependency timeouts."
+
+      # Justification: To detect a sudden "spike" versus normal variance, we compare 
+      # the short-term behavior (5m window) against a historical baseline (1h window)[cite: 2].
+      # If the current rate is more than 3x the baseline, it indicates a sudden anomaly.
+      - alert: RejectionRateSpike
+        expr: |
+          (
+            sum(rate(agent_api_rejections_total[5m]))
+          ) > 3 * (
+            sum(rate(agent_api_rejections_total[1h]))
+          )
+          and sum(rate(agent_api_rejections_total[5m])) > 1
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Sudden anomalous spike in API rejections"
+          description: "The current rejection rate has spiked to >3x the normal 1-hour baseline. Current rate is {{ $value }} rejections/sec."
+          action: "Investigate immediate upstream changes. Check if a recent deployment or configuration change is causing a surge in invalid payloads."
