@@ -2,8 +2,7 @@ import os
 import re
 import time
 from flask import Flask, request, jsonify
-from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
-
+from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 app = Flask(__name__)
 
 PROMPT_VERSION = os.environ.get('PROMPT_VERSION', 'v1.0.0')
@@ -141,7 +140,7 @@ def ask():
         
         if rejected:
             # Rejection tracking metric increment
-            REJECTION_COUNT.labels(
+            REJECTION_REASONS.labels(
                 prompt_version=PROMPT_VERSION, 
                 route='/ask', 
                 reason=reason
